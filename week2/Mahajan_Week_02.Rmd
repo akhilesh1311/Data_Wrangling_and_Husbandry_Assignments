@@ -1,0 +1,86 @@
+---
+title: "Mahajan_Week2"
+author: "Akhilesh Mahajan"
+date: "February 04, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo = FALSE, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(magrittr)
+library(plotly)
+library(gapminder)
+```
+
+## Question and Answers:
+1) Create a dataframe from the set.
+
+Creation of dataframe.
+```{r}
+data1 <- read.csv("https://nycopendata.socrata.com/api/views/xx67-kt59/rows.csv?accessType=DOWNLOAD")
+```
+
+New data frame with restaurant in **Queens** and cuisine as **Pizza**.
+```{r}
+new_data <- data1 %>% filter(BORO == "QUEENS", CUISINE.DESCRIPTION == "Pizza")
+```
+
+5 most common names in the new data frame:
+```{r}
+new_data %>% group_by(DBA) %>% summarize(count = n()) %>% arrange(desc(count)) %>% print(n = 5)
+```
+
+On what dates has Brooklyn pizza parlor "SUSANO'S PIZZERIA & RESTAURANT" been inspected?
+```{r}
+data1 %>% filter(DBA == "SUSANO'S PIZZERIA & RESTAURANT") %>% select(INSPECTION.DATE)
+```
+
+Filter by that name to see why there appear to be multiple inspections on a single day.
+```{r}
+data1 %>% filter(DBA == "SUSANO'S PIZZERIA & RESTAURANT") %>% group_by(INSPECTION.DATE) %>% select(c(9, 11, 12)) %>% print(n = Inf, width = Inf)
+```
+
+The reason for multiple inspections on a single day is that there were different violations, which have different violation codes, found on a single day. Hence, we need different entries for a single day itself.
+
+2)Make and interesting plot from a the dataset.
+
+Ans: Interesting plot.
+```{r warning=FALSE}
+data2 <- read.delim("gapminder_2007_gini.tsv")
+data2 %>% ggplot(aes(gini, lifeExp, color = continent)) + geom_point(aes(size = pop, label = country)) + facet_wrap(~continent, nrow = 2)
+ggplotly()
+```
+
+From this plot, we can deduce that countries with lower Gini index have better life expectancy. Africa has one of the highest average gini index, with the lowest average life expectancy. While Europe has the lowest gini index, with the highest life expectancy. 
+
+Summarized data with minimum, maximum and mean gini per continent.
+```{r}
+data2 %>% group_by(continent) %>% summarize(minimum = min(gini, na.rm = TRUE), maximum = max(gini, na.rm = TRUE), mean = mean(gini, na.rm = TRUE))
+```
+
+3) GDP
+
+Creating a new dataframe with gdp variable.
+```{r}
+gapminder.expanded <- mutate(gapminder, gdp = pop*gdpPercap)
+gapminder.expanded %>% print(n = 5)
+```
+
+Making large numbers in gdp understandable.
+```{r}
+gdp_usa <- gapminder.expanded %>% filter(country == "United States", year == 2007)
+gapminder.expanded1 <- mutate(gapminder.expanded, gdp_ratio = gdp/gdp_usa$gdp)
+gapminder.expanded1 %>% print(n = 5)
+```
+
+Mean gdp ratio by continent and year.
+```{r}
+data3 <- gapminder.expanded1 %>% group_by(continent, year) %>% summarize(mean = mean(gdp_ratio))
+data3 %>% ggplot(aes(year, mean, color = continent)) + geom_point() + geom_line()
+```
+
+By this plot, we can see that Americas has the highest growth in gdp. Somewhere in 1996-7, Asia overtook Europe in total gdp. On the other hand, Africa's gdp growth rate has been very low since 1950.

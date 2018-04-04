@@ -1,0 +1,161 @@
+---
+title: "hw4"
+author: "Akhilesh Mahajan"
+date: "February 13, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo = FALSE, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(babynames)
+library(Lahman)
+library(lubridate)
+library(stringr)
+library(curl)
+library(gapminder)
+```
+
+
+## Question and Answers:
+1) 
+
+a) Create a new function that, given an `lm` object, returns the n residuals with the largest absolute values (but return the residuals, not the absolute value of the residuals), where the default value for n is 5. The function should give a clear error message if n is larger than the number of residuals. Demonstrate that your function works by applying it to
+        mtcars.lm <- lm(mpg ~ disp, data = mtcars)
+    first with no argument for n, then with n = 6, and then with n = 40.
+
+Ans: 
+```{r}
+mtcars.lm <- lm(mpg ~ disp, data = mtcars)
+
+residuals.get <- function(objec, n=5){
+  resid <- objec$residuals
+  sort_resid <- resid[order(abs(resid))]
+  try(if(n > nrow(mtcars)) stop("n is larger than number of residuals"))
+  if(n<=nrow(mtcars)){
+    tail(sort_resid,n)
+  }
+}
+
+residuals.get(mtcars.lm)
+residuals.get(mtcars.lm, n=6)
+residuals.get(mtcars.lm, n=40)
+```
+
+
+
+
+2) Read the file "height.txt", in the week 4 dropbox folder, and use regular expressions to clean the height variable and convert it into a numeric column representing height in inches. Make a table showing the number of non-missing values of height for men and women. Finally, make a plot for height, showing the density for men and for women on the same plot.
+
+Ans:
+
+```{r}
+clean_height <- function(x) {
+#  ifelse(str_detect(x, "[2-9]{1}'[0-9]{1}|[2-9]{1}'[1]{1}[0-1]{1}"), micro_function1(x), x)
+  
+  # correct data
+  if (str_detect(x, "^[2-9]{1}[0-9]{1}$|^[1]{1}[0]{1}[0-9]{1}$")) {
+    x
+  }
+  # cases like 5'7
+  else if (str_detect(x, "^[2-9]{1}'[1]{1}[0-1]{1}|[2-9]{1}'[0-9]{1}$")) {
+    temp <- str_split(x, "'") %>% unlist(.)
+    inches <- 12*as.numeric(temp[1]) + as.numeric(temp[2])
+  }
+  # cases like 5,7
+  else if (str_detect(x, "^[2-9]{1},[1]{1}[0-1]{1}$|^[2-9]{1},[0-9]{1}$")) {
+    temp <- str_split(x, ",") %>% unlist(.)
+    inches <- 12*as.numeric(temp[1]) + as.numeric(temp[2])
+  }
+  # cases like 178 - cm to inches
+  else if (str_detect(x, "^[1]{1}[1-9]{1}[0-9]{1}|[2]{1}[0-9]{1}[0-9]{1}c?m?$")) {
+    temp <- str_split(x, "cm") %>% unlist(.)
+    inches <- round(as.numeric(temp[1]) * 0.393)
+  }
+  # cases like 64.234 to 64
+  else if (str_detect(x, "^[2-9]{1}[0-9]{1}.|^[1]{1}[0]{1}[0-9]{1}.")) {
+    temp <- str_split(x, "\\.") %>% unlist(.)
+    inches <- temp[1]
+  }
+  # cases like 5.4
+  else if (str_detect(x, "^[2-9]{1}.[0-9]{1}$")) {
+    temp <- str_split(x, "\\.") %>% unlist(.)
+    inches <- as.numeric(temp[1])*12 + as.numeric(temp[2])*1.2
+    inches <- round(inches)
+  }
+  # cases like 5.25
+  else if (str_detect(x, "^[2-9]{1}.[0-9]{2}$")) {
+    temp <- str_split(x, "\\.") %>% unlist(.)
+    inches <- as.numeric(temp[1])*12 + as.numeric(temp[2])*0.12
+    inches <- round(inches)
+  }
+  # cases like 5
+  else if (str_detect(x, "^[2-9]{1}$")) {
+    inches <- as.numeric(x)*12
+  }
+  # cases like 5' 11
+  else if (str_detect(x, "^[2-9]{1}' [1]{1}[0-1]{1}$|^[2-9]{1}' [0-9]{1}$")) {
+    temp <- str_split(x, "' ") %>% unlist(.)
+    inches <- 12*as.numeric(temp[1]) + as.numeric(temp[2])
+  }
+  # cases like 6 04
+  else if (str_detect(x, "^[2-9]{1} [1]{1}[0-1]{1}$|^[2-9]{1} [0-9]{1}$")) {
+    temp <- str_split(x, " ") %>% unlist(.)
+    inches <- 12*as.numeric(temp[1]) + as.numeric(temp[2])
+  }
+  else {
+    NA
+  }
+}
+```
+
+
+
+```{r}
+height.data <- read_tsv("~/Downloads/data_wrangling/week4/height.txt")
+height.data.dirty <- height.data
+#height.data.clean <- height.data %>% filter(str_detect(height, "^[2-9]{1}[0-9]{1}$|^[1]{1}[0]{1}[0-9]{1}$"))
+#height.data.dirty <- height.data %>% anti_join(height.data.clean)
+height.data.dirty <- height.data.dirty %>% mutate("height.clean" = str_replace_all(height, "^[^[:alnum:]]{0,}", ""))
+height.data.dirty <- height.data.dirty %>% mutate("height.clean" = str_replace_all(height.clean, "[^[:alnum:]]{0,}$", ""))
+
+height.cleaned.list <- height.data.dirty %>% select(height.clean) %>% apply(1, FUN = function(x) clean_height(x)) 
+height.data.dirty <- height.data.dirty %>% mutate(height.cleaned = as.numeric(height.cleaned.list))
+```
+Table for non-missing height for men and women count:
+```{r}
+na.omit(height.data.dirty) %>% group_by(sex) %>% summarize(count = n())
+```
+
+Plot for height:
+```{r}
+final.data <- na.omit(height.data.dirty)
+final.data %>% ggplot(aes(x = height.cleaned)) + geom_density(colour = "black", fill = "#56B4E9") + facet_wrap(~ sex) + scale_x_continuous(name = "Height in inches", limits = c(0, 90)) + ggtitle("Density plot of heights of males and females")
+```
+
+0) Find all the entries that are in inches. Normal height is from 20 inches to 109 inches. Use this normal height to find dirty heights.
+1) Remove "" '', any special characters from the start and end. Remove [[:space:]] and [[:punct:]].
+2) Now convert 5'11, 5.11, 5' 11, 5.25 to inches. This conversion is from feet to inches. Range is from 2'0 to 9'11.
+3) special cases include: 
+66, 6, "5' 4""", 5.3, 165cm, 511, 2, 5'7, >9000, 5 feet and 8.11 inches, 5.25, 5'11, 11111, 5'9'', 150, 5,3, 6', 5' 10, Five foot eight inches, 5.75, 5'10'',
+0.7, 184, "5' 7.78""", 12, yyy, 5 feet 7inches, 1, 1.7, "69""", 5ft 9 inches, 5 ft 9 inches, 5'11'', 708,661, 649,606, 6 04, 0, 170 cm, 7,283,465
+
+
+
+
+3) Split the gapfinder data by country and use map() to calculate, by country, the r^2 for the linear model lifeExp ~ log10(gdpPercap). Using ggplot2, make a set of boxplots of r^2 by continent.
+
+
+Ans:
+```{r}
+gapminder.split <- gapminder %>% split(.$country)
+gapminder.lm <- gapminder.split %>% map(~ lm(lifeExp ~ log10(gdpPercap), weights = pop, data = .))
+r.squared.list <- map(gapminder.lm, ~ summary(.x)$r.squared)
+y <- stack(r.squared.list)
+r.list.joined <- inner_join(y, gapminder, by = c("ind" = "country")) %>% select(values, ind, continent)
+r.list.joined <- unique(r.list.joined)
+r.list.joined %>% ggplot(aes(x = continent, y = values, fill = continent)) + geom_boxplot() + ggtitle("Boxplot for the continent and their corresponding countries' r square values")
+```

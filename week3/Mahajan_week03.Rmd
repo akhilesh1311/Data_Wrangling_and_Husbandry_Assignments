@@ -1,0 +1,164 @@
+---
+title: "hw3"
+author: "Akhilesh Mahajan"
+date: "February 11, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo = FALSE, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(babynames)
+library(Lahman)
+library(lubridate)
+library(stringr)
+library(curl)
+```
+
+
+## Question and Answers:
+1) 
+
+a) Use the Master data frame in the Lahman package to create a tibble with exactly the same variables as the babynames data frame, and ordered in the same way. You will need to use the summarize() function to get the counts of each name's use. For year, use the year of birth.
+
+Ans: We first sort the Master dataframe by nameFirst. Then, a new dataframe is created with changed column names. We use dataframe count_name to process the n and prop values for each name. Then we use left_join command to combine the values from Master.new and count_name.
+```{r warning=FALSE}
+Master.dummy <- Master %>% arrange(nameFirst) #Sorting by nameFirst
+sex <- "M"
+Master.new <- data.frame(Master.dummy$birthYear, sex, Master.dummy$nameFirst) #Creating a new dataframe with selected columns
+names(Master.new) <- c("year", "sex", "name") # changing the column names
+count_name <- Master %>% group_by(nameFirst) %>% count(nameFirst) #counting the names as n
+sum_all <- sum(count_name$n) # summing all the names counts
+count_name["prop"] <- count_name$n/sum_all # adding the prop values to the count_name
+Master.new <- left_join(Master.new, count_name, by = c("name" = "nameFirst")) # joining both the tables
+glimpse(Master.new) 
+```
+
+Here is the babynames dataframe for comparision:
+```{r}
+glimpse(babynames)
+```
+
+b)  In the Master dataframe, is the variable birthYear consistent with the year in birthDate? Use a function in the lubridate package to extract the year, and then use pipes and the table() function to see how often the first equals the second.
+
+Ans: Here is the R code:
+```{r}
+date_output <- year(ymd(Master$birthDate)) == Master$birthYear
+table(date_output)["TRUE"]
+```
+
+c) Create a data frame of players showing just the playerID, first name, last name, given name, and career total (meaning, summed over all years and all stints) of games (that is, the G variable) according to the Fielding data frame. 
+
+Ans:
+```{r}
+Fielding.new <- Fielding %>% group_by(playerID) %>% summarize(GTotal = sum(G)) #Creating a new fielding dataframe, with G summed over all the years and stints of a player
+Master.new <- Master %>% select(playerID, nameFirst, nameLast, nameGiven) # Creating a new Master dataframe, with just the relevant attributes
+answer1 <- left_join(Master.new, Fielding.new) # left join of the both the tables, joined by playerID
+glimpse(answer1) # sample answer
+```
+
+d) Using mutate() and str_c(), add a variable to your data frame in (c) for full name by combining the first name and last name with a space between them.
+
+Ans:
+```{r}
+answer2 <- answer1 %>% mutate(`full name` = str_c(nameFirst, nameLast, sep = " "))
+glimpse(answer2)
+```
+
+e) Use the data frames you've created to determine the 5 most popular first names in baseball among players who played at least 500 games. Plot them over time with lines in a single plot. Be sure to make the plot look nice by using a title and changing the axis labels if necessary.
+
+Ans:
+```{r}
+Label("G")  # Let's check if G is the number of games that a player has played
+answer3 <- answer2 %>% filter(GTotal >= 500)  # Players who played at least 500 games
+answer3 %>% group_by(nameFirst) %>% summarize(count = n()) %>% arrange(desc(count)) %>% print(n = 5) # 5 most popular names in baseball printed
+```
+
+Answer for the next part:
+```{r}
+answer4 <- answer3 %>% group_by(nameFirst) %>% summarize(count = n()) %>% arrange(desc(count)) %>% head(n = 5)
+Fielding.temp <- Fielding %>% select(playerID, yearID, G)
+Master.temp <- Master %>% select(playerID, nameFirst)
+Master.join.answer4 <- inner_join(answer4, Master.temp)
+Master.join.answer4.join.Fielding.temp <- inner_join(Master.join.answer4, Fielding.temp)
+Master.join.answer4.join.Fielding.temp %>% ggplot(aes(yearID, G, color = nameFirst)) + geom_point() + geom_line()
+```
+
+
+2) Using the "Contact Phone Number", see if there are any businesses that share a phone number with restaurants in the dataset you created in (2).
+
+Ans:
+```{r}
+scraped <- read_csv("https://nycopendata.socrata.com/api/views/w7w3-xahh/rows.csv?accessType=DOWNLOAD") # This link I found in the developer section of chrome
+data1 <- read.csv("https://nycopendata.socrata.com/api/views/xx67-kt59/rows.csv?accessType=DOWNLOAD") # Loading the previous dataset
+similar_contact <- inner_join(scraped, data1, by = c("Contact Phone Number" = "PHONE")) # Inner join based on the contact information
+glimpse(similar_contact)
+```
+
+For finding the top 10 business license categories:
+```{r}
+similar_contact %>% group_by(`Industry`) %>% count(`Industry`) %>% arrange(desc(n)) %>% print(n = 10)
+```
+
+
+3) Read the post at http://www.sumsar.net/blog/2016/09/whats-on-the-menu/ and follow the steps yourself. 
+
+Ans:
+
+```{r}
+menu_data_url <- "https://s3.amazonaws.com/menusdata.nypl.org/gzips/2018_02_01_07_01_04_data.tgz"
+temp_dir <- tempdir()
+curl_download(menu_data_url, file.path(temp_dir, "menu_data.tgz"))
+untar(file.path(temp_dir, "menu_data.tgz"), exdir = temp_dir)
+dish <- read_csv(file.path(temp_dir, "Dish.csv"))
+menu <- read_csv(file.path(temp_dir, "Menu.csv"))
+menu_item <- read_csv(file.path(temp_dir, "MenuItem.csv"))
+menu_page <- read_csv(file.path(temp_dir, "MenuPage.csv"))
+
+d <- menu_item %>% select( id, menu_page_id, dish_id, price) %>%
+  left_join(dish %>% select(id, name) %>% rename(dish_name = name),
+            by = c("dish_id" = "id")) %>%
+  left_join(menu_page %>% select(id, menu_id),
+            by = c("menu_page_id" = "id")) %>%
+  left_join(menu %>% select(id, date, place, location),
+            by = c("menu_id" = "id")) %>%
+  mutate(year = lubridate::year(date)) %>%
+  filter(!is.na(year)) %>%
+  filter(year > 1800 & year <= 2016) %>%
+  select(year, location, menu_id, dish_name, price, place)
+```
+
+
+Interesting plot of my own:
+```{r}
+d$decennium = floor(d$year / 10) * 10
+foods <- c("coffee", "tea", "pancake", "ice cream", "french frie",
+           "french peas", "apple", "banana", "strawberry")
+
+food_over_time <- map_df(foods, function(food) {
+  d %>%
+    filter(year >= 1900 & year <= 1980) %>%
+    group_by(decennium, menu_id) %>%
+    summarise(contains_food =
+      any(str_detect(dish_name, regex(paste0("\\b", food), ignore_case = TRUE)),
+          na.rm = TRUE)) %>%
+    summarise(prop_food = mean(contains_food, na.rm = TRUE)) %>%
+    mutate(food = food)
+})
+
+food_time_plot <- list(
+  geom_line(),
+  geom_point(),
+  scale_y_continuous("% of menus include",labels = scales::percent,
+                     limits = c(0, NA)),
+  scale_x_continuous(""),
+  facet_wrap(~ food),
+  theme_minimal(),
+  theme(legend.position = "none"))
+
+food_over_time %>% filter(food %in% c("coffee", "tea")) %>%
+  ggplot(aes(decennium, prop_food, color = food)) + food_time_plot
+```

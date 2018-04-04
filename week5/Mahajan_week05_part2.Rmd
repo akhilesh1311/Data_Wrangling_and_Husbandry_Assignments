@@ -1,0 +1,230 @@
+---
+title: "hw5 part 2"
+author: "Akhilesh Mahajan"
+date: "March 3, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo = FALSE, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(lubridate)
+library(stringr)
+library(gapminder)
+library(tidytext)
+library(readxl)
+library(purrr)
+library(nycflights13)
+library(scales)
+#install.packages("data.table")
+library(data.table)
+```
+
+
+## Question and Answers:
+
+1) There is a concept in the airline business known as "Available Seat Mile" (ASM). It is simply the number of seats available times the number of miles flown. For example, if a company had 2 daily flights from Trenton airport, one using a plane with 150 seats that flew 1000 miles and the other with 200 seats that flew 2000 miles, then the annual ASM for that company out of Trenton would be 365 * 150 * 1000 + 365 * 200 * 2000.
+
+The nycflights13 package has a planes data frame that gives the number of seats in each specific plane. Use that and the flights data frame to build a tibble with the annual ASM airline/airport combination represented in the flights data frame (by airport I mean departure airport). This tibble should have only columns for airline name, airline, code, airport name, airport code, and ASM. Finally, for the five airlines with the largest ASM totalled across the 3 NYC airports, make a figure showing the ASM by airline and airport (this can be faceted or not---your choice). Be sure you figure looks finished.
+
+
+Ans: For getting the desired tibble *flights.new.joined*:
+```{r}
+#We join selected columns from flights and planes, and calculate ASM alongside
+flights.new.joined <- inner_join(flights %>% select(tailnum, origin, carrier, distance), planes %>% select(tailnum, seats)) %>%
+  select(origin, carrier, distance, seats) %>%
+  mutate(ASM.dummy = distance*seats) %>%
+  group_by(origin, carrier) %>% 
+  summarize(ASM = sum(ASM.dummy))
+#We now join the above table with airports to get the airport name
+flights.new.joined <- flights.new.joined %>% inner_join(airports %>% select(faa, name), by = c("origin" = "faa"))
+names(airlines) <- c("carrier", "airlines.name")
+#We now join the above table with airlines to get the airline name
+flights.new.joined <- flights.new.joined %>% inner_join(airlines)
+#Changing the column names as desired
+names(flights.new.joined) <- c("airport.code", "airline.code", "ASM", "airport.name", "airline.name")
+```
+
+Top 5 airlines for hightest ASM:
+```{r}
+flights.new.joined %>% group_by(airline.code) %>% summarize(ASM.total = sum(ASM)) %>% arrange(desc(ASM.total)) %>% head(n = 5)
+```
+
+Plot for the above 5 airlines and airports with ASM:
+```{r}
+flights.new.joined %>% 
+  ungroup() %>% 
+  inner_join(flights.new.joined %>% group_by(airline.code) %>% summarize(ASM.total = sum(ASM)) %>% arrange(desc(ASM.total)) %>% head(n = 5)) %>% 
+  ggplot(aes(x = airline.code, y = ASM/100000, color = airport.code)) + 
+  geom_point(size = 3) + 
+  ggtitle("Graph of Top 5 ASM airlines")
+
+```
+
+
+2) Table 16 of the file UN_MigrantStockByOriginAndDestination_2015.xlsx (in the Week 5 Dropbox folder) shows migration from one country to another in 2015. By eliminating the rows and columns that don't correspond to countries and then converting to a tidy dataset, find 
+
+Importing the data from excel file:
+```{r}
+#When we select data from 16 row, we get all the country names as column headers, and we only need to add two more column names
+#which is done in next 2 lines.
+migrate.data <- read_xlsx("UN_MigrantStockByOriginAndDestination_2015.xlsx", sheet = "Table 16", range = "A16:IF281")
+colnames(migrate.data)[2] <- c("country.destination")
+colnames(migrate.data)[4] <- c("country.code")
+```
+
+a) The top five countries from which people migrate to the United States.
+    
+Ans:
+```{r}
+migrate.data %>% filter(country.destination == "United States of America") %>% 
+  gather(Afghanistan:Zimbabwe, key = "country.origin", value = "count") %>% 
+  arrange(desc(count)) %>% 
+  head(n = 5)
+```
+
+b) The top five countries to which people migrate from the United States.
+
+Ans:
+```{r}
+migrate.data %>% select(country.destination, country.code, `United States of America`) %>% 
+  filter(!str_detect(as.character(country.code), "^9")) %>% 
+  arrange(desc(`United States of America`)) %>% 
+  head(n = 5)
+```
+c) The top 10 migration pairs of countries. 
+```{r}
+migrate.data %>% filter(!str_detect(as.character(country.code), "^9")) %>% 
+  filter(!str_detect(as.character(country.code), "[0-9]{4}")) %>% 
+  gather(Afghanistan:Zimbabwe, key = "country.origin", value = "count") %>% 
+  arrange(desc(count)) %>% 
+  head(n = 10)
+```
+    
+
+
+3) The file MDG_0000000026,MORT_MATERNALNUM.csv (in the Week 5 Dropbox folder) comes from the World Health Organization (http://apps.who.int/gho/data/node.wrapper.imr?x-id=26). You will see that the numbers are formatted with a space to separate the 1000 from the 100 digit, and include square brackets to indicate a confidence interval. 
+    Please reformat this data with separate variables for the mortality ratio, for the lower confidence bound on the mortality ratio, for the upper confidence bound on the mortality ratio, for the number of maternal deaths, for the lower confidence bound on the number of maternal deaths, and for the upper confidence bound on the number of maternal deaths. 
+    Please print the top 15 rows of the resulting dataset. 
+    Finally, using the numbers for 2015, plot the maternal mortality in this dataset against those in the gapminder dataset you created in the 2018-02-19 assignment to see how closely they follow a straight line. Be sure your figure looks polished. 
+    Your analysis can assume that the csv file is in the same directory as your RMarkdown file.
+    
+
+Ans:
+Cleaning function:
+```{r}
+#Converts numbers which have space like "1 570" to "1570", and leave others unchanged
+get_numbers <- function(x) {
+  x <- str_trim(x)
+  number <- str_split(x, " ") %>% unlist(.)
+  if (length(number) == 2) {
+    number <- 1000*as.numeric(number[1]) + as.numeric(number[2])
+  } else {
+    number <- as.numeric(number[1])
+  }
+}
+
+#applies getnumbers function to all the 3 numbers, and removes square brackets
+separate_columns <- function(x) {
+  temp <- str_split(x, "\\[") %>% unlist(.)
+  
+  number <- get_numbers(temp[1])
+  
+  intervals <- str_split(temp[2], "-") %>% unlist(.)
+  lower.interval <- get_numbers(intervals[1])
+  
+  intervals[2] = str_replace_all(intervals[2], "\\]", "")
+  higher.interval <- get_numbers(intervals[2])
+  
+  paste(number, lower.interval, higher.interval)
+}
+
+```
+
+Creating a new dataset:
+```{r}
+who.data <- read_csv("MDG_0000000026,MORT_MATERNALNUM.csv")
+
+#Applying the cleaning function to mortality.ratio, and then adding the new column to the original table
+mortality.ratio.list <- who.data %>% select(`Maternal mortality ratio (per 100 000 live births)`) %>% apply(1, FUN = function(x) separate_columns(x))
+who.data <- who.data %>% mutate(mortality.ratio = mortality.ratio.list)
+
+#Applying the cleaning function to maternal.death, and then adding the new column to the original table
+maternal.death.list <- who.data %>% select(`Number of maternal deaths`) %>% apply(1, FUN = function(x) separate_columns(x))
+who.data <- who.data %>% mutate(maternal.death = maternal.death.list)
+
+#We derive 3 more rows from mortality.ratio and 3 more rows from maternal.death
+who.data <- who.data %>% separate(mortality.ratio, into = c("mortality.ratio", "mortality.ratio.lower.confidence", "mortality.ratio.upper.confidence"), convert = TRUE, sep = " ")
+who.data <- who.data %>% separate(maternal.death, into = c("maternal.death", "maternal.death.lower.confidence", "maternal.death.upper.confidence"), convert = TRUE, sep = " ")
+who.data %>% print(n = 15)
+```
+
+
+Comparision with gapminder dataset:
+ Finally, using the numbers for 2015, plot the maternal mortality in this dataset against those in the gapminder dataset you created in the 2018-02-19 assignment to see how closely they follow a straight line. Be sure your figure looks polished. 
+
+Building the previous gapminder data again:
+```{r}
+urls <- c("https://docs.google.com/spreadsheet/pub?key=phAwcNAVuyj0NpF2PTov2Cw&output=xlsx",
+          "https://docs.google.com/spreadsheet/pub?key=phAwcNAVuyj2tPLxKvvnNPA&output=xlsx",
+          "https://docs.google.com/spreadsheet/pub?key=phAwcNAVuyj0TAlJeCEzcGQ&output=xlsx",
+          "https://docs.google.com/spreadsheet/pub?key=phAwcNAVuyj0XOoBL_n5tAQ&output=xlsx",
+          "https://docs.google.com/spreadsheet/pub?key=0AkBd6lyS3EmpdHo5S0J6ekhVOF9QaVhod05QSGV4T3c&output=xlsx",
+          "https://docs.google.com/spreadsheet/pub?key=pyj6tScZqmEcVezxiMlWaRw&output=xlsx",
+          "https://docs.google.com/spreadsheet/pub?key=pyj6tScZqmEeL79qOoKtofQ&output=xlsx",
+          "https://docs.google.com/spreadsheet/pub?key=pyj6tScZqmEcjeKHnZq6RIg&output=xlsx"
+          )
+measures <- c("infant_mortality", "life_expectancy",
+                 "fertility","population","gdp", "maternal_mortality", "health_spending", "gini")
+for (i in 1:length(urls)){
+  if (!file.exists(paste0(measures[i], ".xlsx")))
+  download.file(urls[i], destfile = paste0(measures[i], ".xlsx"), method = "auto")
+}
+gap_raw <- map(paste0(measures, ".xlsx"), read_excel, na = c("", "NA", "-", "."))
+names(gap_raw) <- measures
+
+gap_raw_tall <- gap_raw %>% 
+  map(~ gather(.x[, -1], key = "year", value = "count")) %>%
+  map2(.x = ., .y = gap_raw, .f = ~ data.frame(.x, .y[, 1])) %>%
+  map(~ .x[complete.cases(.x), ]) %>%
+  map(~ setnames(.x, old = 3, new = "country"))
+
+a <- data.frame(gap_raw_tall$infant_mortality)
+b <- data.frame(gap_raw_tall$life_expectancy)
+c <- data.frame(gap_raw_tall$fertility)
+d <- data.frame(gap_raw_tall$population)
+e <- data.frame(gap_raw_tall$gdp)
+f <- data.frame(gap_raw_tall$maternal_mortality)
+g <- data.frame(gap_raw_tall$health_spending)
+h <- data.frame(gap_raw_tall$gini)
+gapminder.new <- Reduce(function(x, y) merge(x, y, by = c("year", "country"), all = TRUE), list(a, b, c, d, e, f, g, h))
+setnames(gapminder.new, old = 3:10, new = c("infant_mortality", "life_expectancy", "fertility", "population", "gdp", "maternal_mortality", "health_spending", "gini"))
+```
+
+```{r}
+#Selecting specific data from the previous gapminder dataset
+temp <- gapminder.new %>% 
+  arrange(desc(year)) %>%
+  select(year, country, maternal_mortality) %>% 
+  na.omit() %>% 
+  filter(year == "2013.0")
+
+#Selecting specific data from the current dataset
+temp2 <- who.data %>% 
+  filter(Year == 2015) %>% 
+  select(Country, mortality.ratio)
+
+#Joining the above 2 specific datas
+temp3 <- temp %>% 
+  inner_join(temp2, by = c("country" = "Country"))
+
+#This plot is expected to have a regression line of 45 degree angle passing through origin
+temp3 %>% ggplot(aes(x = maternal_mortality, y = mortality.ratio)) + 
+  geom_point(color = "red") + 
+  ggtitle("Comparision of two datasets' Maternal Mortality") + 
+  scale_x_continuous(name = "Old data maternal mortality") + 
+  scale_y_continuous(name = "New data maternal mortality")
+```

@@ -1,0 +1,292 @@
+---
+title: "hw5"
+author: "Akhilesh Mahajan"
+date: "February 25, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo = FALSE, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(lubridate)
+library(stringr)
+library(gapminder)
+library(gutenbergr)
+library(tidytext)
+library(readxl)
+library(purrr)
+install.packages("data.table")
+library(data.table)
+library(ggrepel)
+```
+
+
+## Question and Answers:
+1) 
+a) Clean as many of the height answers as you can; do not replace values with hard-coded numbers (i.e., don't type height[29] <- 62). Do so by creating a new variable for height; don't replace values in the original variable.
+
+Ans:
+```{r}
+clean_height <- function(x) {
+#  ifelse(str_detect(x, "[2-9]{1}'[0-9]{1}|[2-9]{1}'[1]{1}[0-1]{1}"), micro_function1(x), x)
+  
+  # correct data
+  if (str_detect(x, "^[2-9]{1}[0-9]{1}$|^[1]{1}[0]{1}[0-9]{1}$")) {
+    x
+  }
+  # cases like 5'7
+  else if (str_detect(x, "^[2-9]{1}'[1]{1}[0-1]{1}|[2-9]{1}'[0-9]{1}$")) {
+    temp <- str_split(x, "'") %>% unlist(.)
+    inches <- 12*as.numeric(temp[1]) + as.numeric(temp[2])
+  }
+  # cases like 5,7
+  else if (str_detect(x, "^[2-9]{1},[1]{1}[0-1]{1}$|^[2-9]{1},[0-9]{1}$")) {
+    temp <- str_split(x, ",") %>% unlist(.)
+    inches <- 12*as.numeric(temp[1]) + as.numeric(temp[2])
+  }
+  # cases like 178 - cm to inches
+  else if (str_detect(x, "^[1]{1}[1-9]{1}[0-9]{1}|[2]{1}[0-9]{1}[0-9]{1}c?m?$")) {
+    temp <- str_split(x, "cm") %>% unlist(.)
+    inches <- round(as.numeric(temp[1]) * 0.393)
+  }
+  # cases like 64.234 to 64
+  else if (str_detect(x, "^[2-9]{1}[0-9]{1}.|^[1]{1}[0]{1}[0-9]{1}.")) {
+    temp <- str_split(x, "\\.") %>% unlist(.)
+    inches <- temp[1]
+  }
+  # cases like 5.4
+  else if (str_detect(x, "^[2-9]{1}.[0-9]{1}$")) {
+    temp <- str_split(x, "\\.") %>% unlist(.)
+    inches <- as.numeric(temp[1])*12 + as.numeric(temp[2])*1.2
+    inches <- round(inches)
+  }
+  # cases like 5.25
+  else if (str_detect(x, "^[2-9]{1}.[0-9]{2}$")) {
+    temp <- str_split(x, "\\.") %>% unlist(.)
+    inches <- as.numeric(temp[1])*12 + as.numeric(temp[2])*0.12
+    inches <- round(inches)
+  }
+  # cases like 5
+  else if (str_detect(x, "^[2-9]{1}$")) {
+    inches <- as.numeric(x)*12
+  }
+  # cases like 5' 11
+  else if (str_detect(x, "^[2-9]{1}' [1]{1}[0-1]{1}$|^[2-9]{1}' [0-9]{1}$")) {
+    temp <- str_split(x, "' ") %>% unlist(.)
+    inches <- 12*as.numeric(temp[1]) + as.numeric(temp[2])
+  }
+  # cases like 6 04
+  else if (str_detect(x, "^[2-9]{1} [1]{1}[0-1]{1}$|^[2-9]{1} [0-9]{1}$")) {
+    temp <- str_split(x, " ") %>% unlist(.)
+    inches <- 12*as.numeric(temp[1]) + as.numeric(temp[2])
+  }
+  else {
+    NA
+  }
+}
+```
+
+
+
+```{r}
+height.data <- read_tsv("~/Downloads/data_wrangling/week4/height.txt")
+height.data.dirty <- height.data
+#height.data.clean <- height.data %>% filter(str_detect(height, "^[2-9]{1}[0-9]{1}$|^[1]{1}[0]{1}[0-9]{1}$"))
+#height.data.dirty <- height.data %>% anti_join(height.data.clean)
+height.data.dirty <- height.data.dirty %>% mutate("height.clean" = str_replace_all(height, "^[^[:alnum:]]{0,}", ""))
+height.data.dirty <- height.data.dirty %>% mutate("height.clean" = str_replace_all(height.clean, "[^[:alnum:]]{0,}$", ""))
+
+height.cleaned.list <- height.data.dirty %>% select(height.clean) %>% apply(1, FUN = function(x) clean_height(x)) 
+height.data.dirty <- height.data.dirty %>% mutate(height.cleaned = as.numeric(height.cleaned.list))
+```
+
+b) Provide a table of the number of missing values for the new variable by sex.
+Ans:
+```{r}
+height.data.dirty %>% filter(is.na(height.cleaned)) %>% group_by(sex) %>% summarize(count = n())
+```
+
+c) Print all of the original values for height for which your methods could not provide a clean value.
+Ans:
+```{r}
+height.data.dirty %>% filter(is.na(height.cleaned)) %>% select(height) %>% print(n = Inf)
+```
+
+d) Plot, in a single plot, the density of height for men and women.
+Plot for height:
+```{r}
+final.data <- na.omit(height.data.dirty)
+final.data %>% ggplot(aes(x = height.cleaned)) + geom_density(colour = "black", fill = "#56B4E9") + facet_wrap(~ sex) + scale_x_continuous(name = "Height in inches", limits = c(0, 90)) + ggtitle("Density plot of heights of males and females")
+```
+
+
+2) 
+
+a) Download the texts of Wuthering Heights and Jane Eyre, using the gutenbergr package.
+
+Ans: 
+```{r}
+bronte_books <- gutenberg_download(gutenberg_id = c(768, 1260), meta_fields = "title")
+```
+
+b) Find the 10 most common non-stop-words in Jane Eyre.
+
+Ans:
+```{r}
+data("stop_words")
+bronte_books %>% filter(title == "Jane Eyre: An Autobiography") %>% 
+  mutate(linenumber = row_number(), chapter = cumsum(str_detect(text, "(?i)^chapter [0-9ivxlc]"))) %>% 
+  unnest_tokens(words, text) %>% 
+  anti_join(stop_words, by = c("words" = "word")) %>% 
+  group_by(words) %>% 
+  summarize(count = n()) %>% 
+  arrange(-count) %>% 
+  head(n = 10)
+```
+
+c) Find the 10 most common bigrams in Jane Eyre that do not include stop words.
+
+Ans:
+```{r}
+bronte_books %>% filter(title == "Jane Eyre: An Autobiography") %>% 
+  mutate(linenumber = row_number(), chapter = cumsum(str_detect(text, "(?i)^chapter [0-9ivxlc]"))) %>% 
+  unnest_tokens(bigram, text, token = "ngrams", n = 2) %>% 
+  separate(bigram, c("word1", "word2"), sep = " ") %>%
+  filter(!word1 %in% stop_words$word) %>% 
+  filter(!word2 %in% stop_words$word) %>% 
+  unite(bigram, word1, word2, sep = " ") %>% 
+  group_by(bigram) %>% 
+  summarize(count = n()) %>% 
+  arrange(-count) %>% 
+  head(n = 10)
+```
+
+d) Plot the sentiment for the two books.
+
+Ans:
+```{r}
+bronte_books %>% group_by(title) %>%
+  mutate(linenumber = row_number(), chapter = cumsum(str_detect(text, regex("^chapter [\\divxlc]",ignore_case = TRUE)))) %>%
+  ungroup() %>%
+  unnest_tokens(word, text) %>% 
+  filter(word != "miss") %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(title, index = linenumber %/% 80, sentiment) %>% 
+  spread(sentiment, n, fill = 0) %>% 
+  mutate(sentiment = positive - negative) %>% 
+  ggplot(aes(index, sentiment, fill = title)) + geom_bar(alpha = 0.8, stat = "identity", show.legend = FALSE) + facet_wrap(~title, ncol = 3, scales = "free_x") + theme(legend.position = "none") + geom_smooth(span = 0.15)
+```
+
+3) The code appended to the end of this file will download some data collected by www.gapminder.org/data and then read it into a list of wide data frames (notice the use of map()). Be sure to include the code in your Rmarkdown files so that it is self-contained.
+
+
+```{r}
+urls <- c("https://docs.google.com/spreadsheet/pub?key=phAwcNAVuyj0NpF2PTov2Cw&output=xlsx",
+          "https://docs.google.com/spreadsheet/pub?key=phAwcNAVuyj2tPLxKvvnNPA&output=xlsx",
+          "https://docs.google.com/spreadsheet/pub?key=phAwcNAVuyj0TAlJeCEzcGQ&output=xlsx",
+          "https://docs.google.com/spreadsheet/pub?key=phAwcNAVuyj0XOoBL_n5tAQ&output=xlsx",
+          "https://docs.google.com/spreadsheet/pub?key=0AkBd6lyS3EmpdHo5S0J6ekhVOF9QaVhod05QSGV4T3c&output=xlsx",
+          "https://docs.google.com/spreadsheet/pub?key=pyj6tScZqmEcVezxiMlWaRw&output=xlsx",
+          "https://docs.google.com/spreadsheet/pub?key=pyj6tScZqmEeL79qOoKtofQ&output=xlsx",
+          "https://docs.google.com/spreadsheet/pub?key=pyj6tScZqmEcjeKHnZq6RIg&output=xlsx"
+          )
+
+measures <- c("infant_mortality", "life_expectancy",
+                 "fertility","population","gdp", "maternal_mortality", "health_spending", "gini")
+
+
+
+for (i in 1:length(urls)){
+  if (!file.exists(paste0(measures[i], ".xlsx")))
+  download.file(urls[i], destfile = paste0(measures[i], ".xlsx"), method = "auto")
+}
+
+gap_raw <- map(paste0(measures, ".xlsx"), read_excel, na = c("", "NA", "-", "."))
+names(gap_raw) <- measures
+```
+
+a) Make a new list, where each list element is a tall data frame. Try to use functions from the purrr package when you do so.
+
+Ans:
+```{r}
+gap_raw_tall <- gap_raw %>% 
+  map(~ gather(.x[, -1], key = "year", value = "count")) %>%
+  map2(.x = ., .y = gap_raw, .f = ~ data.frame(.x, .y[, 1])) %>%
+  map(~ .x[complete.cases(.x), ]) %>%
+  map(~ setnames(.x, old = 3, new = "country"))
+```
+
+b) Join the tall data frames together to get a single data frame much like the gapminder data frame in the package gapminder. *Do not call your new data frame "gapminder"*---that would be too confusing.
+
+Ans:
+```{r}
+a <- data.frame(gap_raw_tall$infant_mortality)
+b <- data.frame(gap_raw_tall$life_expectancy)
+c <- data.frame(gap_raw_tall$fertility)
+d <- data.frame(gap_raw_tall$population)
+e <- data.frame(gap_raw_tall$gdp)
+f <- data.frame(gap_raw_tall$maternal_mortality)
+g <- data.frame(gap_raw_tall$health_spending)
+h <- data.frame(gap_raw_tall$gini)
+gapminder.new <- Reduce(function(x, y) merge(x, y, by = c("year", "country"), all = TRUE), list(a, b, c, d, e, f, g, h))
+setnames(gapminder.new, old = 3:10, new = c("infant_mortality", "life_expectancy", "fertility", "population", "gdp", "maternal_mortality", "health_spending", "gini"))
+```
+
+
+
+c) Make one plot showing health_spending over time since 1945 for the 12 richest countries (as measured by gdp per capita at the latest available year). Be sure to make the plot look finished (use a title, change axes labels if necessary, etc.)
+Ans:
+```{r}
+# Checking if any of the year values are null; further program depends on this.
+# No null values in year.
+gapminder.new %>% select(year) %>% filter(is.na(.)) 
+
+gapminder.new %>%
+  filter(year > 1944) %>%
+  select(year, country, health_spending) %>% 
+  na.omit() %>%
+  inner_join(gapminder.new %>%
+               select(country, year, gdp) %>%
+               arrange(desc(year)) %>%
+               na.omit() %>%
+               subset(!duplicated(country)) %>%
+               arrange(desc(gdp)) %>%
+               head(n = 12), by = c("country" = "country")) %>%
+  select(1:3) %>%
+  ggplot(aes(x = year.x, y = health_spending, color = country)) +
+  geom_point() + ggtitle("Health Spending for 12 Richest countries") + 
+  theme(axis.text.x = element_text(angle = 80, size = 10)) + 
+  scale_x_discrete(name = "Year") + scale_y_continuous(name = "Health Spending") + 
+  geom_line(aes(group = country))
+```
+
+d) For the same countries and years as in (c), plot maternal mortality (y-axis) against health spending (x-axis). Make the plot look finished.
+Ans:
+```{r}
+gapminder.new %>%
+  filter(year > 1944) %>%
+  select(year, country, health_spending, maternal_mortality) %>% 
+  na.omit() %>%
+  inner_join(gapminder.new %>%
+               select(country, year, gdp) %>%
+               arrange(desc(year)) %>%
+               na.omit() %>%
+               subset(!duplicated(country)) %>%
+               arrange(desc(gdp)) %>%
+               head(n = 12), by = c("country" = "country")) %>%
+  select(1:4) %>%
+  ggplot(aes(x = health_spending, y = maternal_mortality, color = country)) + 
+  ggtitle("Health Spending vs Maternal Mortality for 12 richest countries") + 
+  scale_x_continuous("Health Spending") + scale_y_continuous("Maternal Mortality") +
+  geom_line() + geom_point()
+```
+
+e) Using data from one recent year, divide the countries into quintiles based on gdp per capita and make separate plots for each quintile showing
+maternal_mortality plotted against the gini index.
+Ans:
+```{r}
+gdp.sorted.countries <- gapminder.new %>% select(year, country, gdp) %>% na.omit() %>% arrange(desc(gdp, year)) %>% subset(!duplicated(country))
+```
