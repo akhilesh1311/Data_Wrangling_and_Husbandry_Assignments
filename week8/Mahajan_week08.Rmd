@@ -1,0 +1,113 @@
+---
+title: "hw8"
+author: "Akhilesh Mahajan"
+date: "April 7, 2018"
+output: html_document
+---
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(DBI)
+library(dbplyr)
+library(Modeler)
+library(pool)
+library(RMySQL)
+library(gapminder)
+library(broom)
+```
+
+
+1) The following code will set up a connection to a demo database. You will probably need to install the `pool` package.
+
+Ans:
+
+```{r}
+my_db <- dbPool(
+  RMySQL::MySQL(), 
+  dbname = "shinydemo",
+  host = "shiny-demo.csa7qlmguqrf.us-east-1.rds.amazonaws.com",
+  username = "guest",
+  password = "guest"
+)
+```
+
+This database has three tables, City, Country, and CountryLanguage.
+
+```{r}
+city <- collect(tbl(my_db, "City"))
+country <- collect(tbl(my_db, "Country"))
+countryLanguage <- collect(tbl(my_db, "CountryLanguage"))
+```
+
+a) By joining the City and Country tables on the code variable (slightly different names in each table), create a new table containing only the name of the city,  the continent, the region, and the population of the city (not the population of the country). 
+
+```{r}
+city.country.joined <- city %>% 
+  inner_join(country, by = c("CountryCode" = "Code")) %>%
+  select(Name.x, Continent, Region, Population.x)
+```
+
+b) Restricting to North America, make boxplots of population by region.
+
+```{r}
+city.country.joined %>% 
+  filter(Continent == "North America") %>% 
+  ggplot(aes(x = Region, y = Population.x)) + 
+  geom_boxplot() + ggtitle("Population boxplot of North America by region") +
+  scale_y_continuous("Population")
+```
+
+c) Taking advantage of the `nest()` function, show the 5 largest cities in each region in North America.
+
+The following cities are the largest cities by population for each region of North America.
+```{r}
+city.country.joined.nested <- city.country.joined %>%
+  filter(Continent == "North America") %>% 
+  group_by(Region) %>% 
+  nest()
+
+city.country.joined.nested$data %>% 
+  map(~ .x %>% 
+        arrange(desc(Population.x)) %>%
+        head(n = 5) %>% 
+        select(Name.x)) %>%
+  set_names(city.country.joined.nested$Region)
+```
+
+2, There is a built-in dataframe called "ChickWeight"
+
+a) Using `nest()`, construct a 50 x 3 dataframe with columns corresponding to the chick id, the chick diet, and dataframes of each chick's data
+
+```{r}
+ChickWeight.nested <- ChickWeight %>% 
+  group_by(Chick, Diet) %>% 
+  nest()
+```
+
+b) Create a new column consisting of an `lm` model for each chick, where the regression is `weight ~ Time`
+
+
+```{r}
+ChickWeight.nested.lm <- ChickWeight.nested %>% 
+  mutate(lm = map(data, ~ lm(data = ., weight ~ Time)))
+```
+
+c) Add columns to the dataframe giving the slope and intercept for each chick (the `broom` package might be helpful, but it's not the only way).
+
+
+```{r}
+ChickWeight.nested.lm.slope.intercept <- ChickWeight.nested.lm %>% 
+  mutate(intercept = map(lm, ~ as.numeric(.x$coefficients[1])) %>% unlist(),
+         slope = map(lm, ~ as.numeric(.x$coefficients[2])) %>% unlist())
+```
+
+d) Make a scatterplot of slope (vertical axis) and intercept (horizontal axis) colored by Diet
+
+
+We see that when slope is very high, the intercept is low. This graph itself somewhat follows linear curve.
+```{r}
+ChickWeight.nested.lm.slope.intercept %>%
+  ggplot(aes(x = intercept, y = slope, color = Diet)) + 
+  geom_point() + geom_line()
+  ggtitle("Scatterplot of Slope and Intercept")
+```

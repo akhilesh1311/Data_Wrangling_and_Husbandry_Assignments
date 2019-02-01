@@ -1,0 +1,84 @@
+---
+title: "hw6"
+author: "Akhilesh Mahajan"
+date: "April 1, 2018"
+output: html_document
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(rvest)
+library(tidyverse)
+```
+
+1. Taking advantage of the rvest package, turn the table at http://www.nature.com/articles/ng.3097/tables/3 into an R data frame
+
+Ans:
+```{r}
+#Used selector gadget for finding the nodes.
+genes <- "http://www.nature.com/articles/ng.3097/tables/3" %>% 
+  read_html() %>%
+  html_nodes("#content .mq1200-padded") %>%
+  html_nodes("table") %>%
+  html_table(fill = TRUE) %>% 
+  as.data.frame()
+```
+
+a. Be sure to delete the rows "Genes with" and "New genes without" (and don't do it by using the row number).
+
+Ans:
+```{r}
+# Since these particular rows have same values over all the columns, we filter these rows by randomly selecting any column
+genes <- genes %>% 
+  filter(!grepl("Genes with *", Gene)) %>%
+  filter(!grepl("New genes without *", Gene))
+```
+
+
+b. Be sure to convert the p value column to numbers
+
+Ans:P value cleaning function
+```{r}
+p.column.to.number <- function(x) {
+  #We split on space
+  temp <- str_split(x, " ") %>% unlist(.)
+  base <- temp[1]
+  
+  if(!is.na(temp[3])) {
+    #There is explicit exponent present
+    #We extract all the digits present in the exponent
+    exponent <- str_extract(temp[3], "[0-9]{1,}$")
+    as.double(paste0(base, "e", "-", exponent))
+  } else {
+    #There is no explicit exponent present
+    as.double(paste0(base))
+  }
+}
+```
+
+```{r}
+genes.p.list <- genes %>% select(Prioritization.P.value) %>% apply(1, FUN = function(x) p.column.to.number(x))
+genes <- genes %>% mutate(Prioritization.P.value = genes.p.list)
+```
+
+c. The last column is shown in 3 rows in the journal, but most likely as one string in your table. Use regular expressions to insert semicolons (";") between each of the original lines. For example,
+    "PI3K cascade (REACTOME, P = 6.2 × 10−13); Chronic myeloid leukemia (KEGG, P = 1.6 × 10−12); Response to fibroblast growth factor stimulus (GO, P = 5.4 × 10−11)"
+    
+
+Ans:We observer that whenever we have ')' closing round brackets, we need a semicolon after that.
+
+```{r}
+semicolon.adder <- function(x) {
+  x %>% str_replace_all("\\)", "\\);")
+}
+
+gene.set.list <- genes %>% select(Top.ranking.reconstituted.gene.sets) %>% apply(1, FUN = function(x) semicolon.adder(x))
+genes <- genes %>% mutate(Top.ranking.reconstituted.gene.sets = gene.set.list)
+```
+
+
+d. Show the table in your RMarkdown file by using the function `knitr::kable()`
+
+Ans:We see that the data frame **genes** loses it's value in column Prioritization.P.value. Hence we add digits = 20 argument.
+```{r}
+knitr::kable(genes, digits = 20)
+```
